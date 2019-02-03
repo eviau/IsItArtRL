@@ -1,14 +1,32 @@
-import numpy as np
+# is it art RL ?
+# to do: clean the code, add references
+
+from __future__ import print_function
+
 import gym
+from six.moves import cPickle as pickle
+import json
+import sys
+import os
+from os import path
+# Different file so it can be unpickled
+import argparse
+
 import tkinter as tk
 
 from PIL import Image, ImageTk
 import logging.config
 
 from gym import error, spaces, utils, wrappers, logger
+from gym.utils import seeding
+
+import numpy as np
+import random
+import datetime
+from numpy import matlib
 
 NB_SAMPLES = 5
-LEN_IMG = 50
+LEN_IMG = 250
 
 
 class MultiDiscrete(gym.Space):
@@ -58,14 +76,12 @@ class isitartrlEnv(gym.Env):
         self.current_painting = np.zeros(
             (LEN_IMG, LEN_IMG, 3), dtype=np.uint8)
         self.is_picture_art = False
-        self.is_picture_art_train = [1] * LEN_IMG
+        self.is_picture_art_train = [0] * NB_SAMPLES
 
-        self.current_th_aa = np.random.uniform(0, 127, (3, LEN_IMG, LEN_IMG))
-        self.current_th_bb = np.random.uniform(127, 255, (3, LEN_IMG, LEN_IMG))
-
+        self.current_th_aa = np.zeros((3, LEN_IMG, LEN_IMG))
+        self.current_th_bb = np.zeros((3, LEN_IMG, LEN_IMG))
         self.current_ths_aa = np.zeros(
             (LEN_IMG, LEN_IMG, 3, NB_SAMPLES), dtype=np.uint8)
-        self.current_ths_bb = np.zeros(
             (LEN_IMG, LEN_IMG, 3, NB_SAMPLES), dtype=np.uint8)
 
         self.nb_train = 0
@@ -87,7 +103,7 @@ class isitartrlEnv(gym.Env):
 
     def _take_action(self, action):
         self.action_episode_memory[self.curr_episode].append(action)
-
+        
         rs = action[:, :, 0]
         bs = action[:, :, 1]
         gs = action[:, :, 2]
@@ -103,26 +119,30 @@ class isitartrlEnv(gym.Env):
         return self.current_painting
 
     def itisart(self):
-        self.is_picture_art = 50000
+        self.is_picture_art = True
 
     def itisnotart(self):
-        self.is_picture_art = -500
+        self.is_picture_art = False
 
     def itisart_train(self, n):
-        self.is_picture_art_train[n] = 50000
+        self.is_picture_art_train[n] = 1
 
     def itisnotart_train(self, n):
-        # print(n)
-        self.is_picture_art_train[n] = -500
+        self.is_picture_art_train[n] = 0
 
     def _get_reward(self):
         if self.is_picture_art:
-            return 50000
+            return np.random.uniform(100,1000)
         else:
             return -500
 
     def reset(self):
-
+        """
+        Reset the state of the environment and returns an initial observation.
+        Returns
+        -------
+        observation (object): the initial observation of the space.
+        """
         self.curr_episode += 1
         self.action_episode_memory.append([])
         self.is_picture_art = False
@@ -133,13 +153,14 @@ class isitartrlEnv(gym.Env):
             return self.current_painting
 
     def _get_state(self):
-        """Get the observation."""
-        return self.current_painting
+         """Get the observation."""
+         return self.current_painting
 
 
 class IsItArtRLGUI:
-    def __init__(self, master, env):
+    def __init__(self, master, env, params):
         master.title("isitartRL")
+        self.params = params
         self.env = env
         self.master = master
         self.nb_train = 0
@@ -171,6 +192,7 @@ class IsItArtRLGUI:
 
         self.image_widget.pack(fill="both", expand=True)
 
+
     def update_gui(self):
         if self.nb_train < NB_SAMPLES:
             self.label.configure(
@@ -184,76 +206,104 @@ class IsItArtRLGUI:
         self.env.itisart()
         self.step()
 
+
+
     def no(self):
         self.env.itisnotart()
         self.step()
 
+
+
     def step(self):
         if self.nb_train == NB_SAMPLES:
-            env.train_phase = False
-            env.nb_train = 0
-            self.nb_train = 0
+            env.train_phase=False
+            env.nb_train =0
+            self.nb_train=0
 
         else:
-            self.nb_train = self.nb_train + 1
-            env.nb_train = env.nb_train + 1
-            env.train_phase = True
+            self.nb_train=self.nb_train + 1
+            env.nb_train = env.nb_train +1
+            env.train_phase=True
 
         self.update_gui()
 
         reward, _done = self.env.step()
         env.total_rew += reward
 
-        img = Image.fromarray(self.env.render('rgb_array'))
-        self.img_tk = ImageTk.PhotoImage(img)
+        img=Image.fromarray(self.env.render('rgb_array'))
+        self.img_tk=ImageTk.PhotoImage(img)
         self.image_widget.configure(image=self.img_tk)
         self.image_widget.pack(fill="both", expand=True)
 
 
-def cem(self):
 
-    img = np.zeros((LEN_IMG, LEN_IMG, 3))
+def generate_image(th_mean, initial_std=10):
+    th_std=np.identity(th_mean.size) * initial_std
+    ths=(np.abs(np.floor((np.random.multivariate_normal(
+        ((th_mean*np.ones_like(th_mean.size)*255.0)), th_std, (LEN_IMG, LEN_IMG, 3)))))).astype(int)
+    return ths
+
+
+def cem(self):
+  
+
+    img = np.zeros((LEN_IMG,LEN_IMG,3))    
     for x in range(LEN_IMG):
         for y in range(LEN_IMG):
             for z in range(3):
-                current_a = self.current_th_aa[z, x, y]+np.random.normal(0, 1)
-                current_b = self.current_th_bb[z, x, y]+np.random.normal(0, 1)
-                img[x, y, z] = np.random.uniform(current_a, current_b)
-                self.current_ths_aa[x, y, z, self.nb_train-1] = current_a
-                self.current_ths_bb[x, y, z, self.nb_train-1] = current_b
+                current_a = self.current_th_aa[z,x,y]+np.random.uniform(-5,5)
+                current_b = self.current_th_bb[z,x,y]+np.random.uniform(-5,5)
+                img[x,y,z]=np.random.uniform(current_a,current_b)
+                self.current_ths_aa[x,y,z,self.nb_train-1] = current_a
+    # print(current_std)
+                # self.current_ths_ab[x,y,z,self.nb_train-1] = self.current_th_b[z,x,y]
+
+                # self.current_ths_ba[x,y,z,self.nb_train-1] = self.current_th_a[z,x,y]
+    # print(current_std)
+                self.current_ths_bb[x,y,z,self.nb_train-1] = current_b
     return img
 
 
 def cem_evaluate(self):
 
     ys = self.is_picture_art_train
+
     idx = np.argsort(ys)
-    elite_idx = idx[3]
+    elite_idx = idx[:2]
 
     for x in range(LEN_IMG):
         for y in range(LEN_IMG):
             for z in range(3):
-
-                elite_ths = self.current_ths_aa[x, y, z, :elite_idx]
-                elite_std = self.current_ths_bb[x, y, z, :elite_idx]
+                elite_ths = self.current_ths_aa[x,y,z,elite_idx]
+                elite_std = self.current_ths_bb[x,y,z,elite_idx]
                 th_mean = elite_ths.mean(axis=0)
                 th_std = elite_std.mean(axis=0)
-                self.current_th_aa[z, x, y] = th_mean
-                self.current_th_bb[z, x, y] = th_std
+                self.current_th_aa[z,x,y] = th_mean
+                self.current_th_bb[z,x,y] = th_std
+            
+
+def isitartRL_human():
+
+    rew=env._get_reward
+    return rew
 
 
 if __name__ == "__main__":
-    np.random.seed(1)
+    logger.set_level(logger.INFO)
 
-    num_steps = 1
+    np.random.seed(5)
+
+    params=dict(n_iter=10, batch_size=10, elite_frac=0.2)
+    num_steps=1
     gym.envs.registration.register(id="isitartrl-v1",
                                    entry_point=isitartrlEnv)
 
-    env = gym.make("isitartrl-v1")
+    env=gym.make("isitartrl-v1")
     env.reset()
 
-    r = tk.Tk()
-    gui = IsItArtRLGUI(r, env)
+    r=tk.Tk()
+    gui=IsItArtRLGUI(r, env, params)
     r.attributes('-topmost', True)
     r.focus_force()
     r.mainloop()
+
