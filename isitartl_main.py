@@ -82,6 +82,7 @@ class isitartrlEnv(gym.Env):
         self.current_th_bb = np.zeros((3, LEN_IMG, LEN_IMG))
         self.current_ths_aa = np.zeros(
             (LEN_IMG, LEN_IMG, 3, NB_SAMPLES), dtype=np.uint8)
+        self.current_ths_bb = np.zeros(
             (LEN_IMG, LEN_IMG, 3, NB_SAMPLES), dtype=np.uint8)
 
         self.nb_train = 0
