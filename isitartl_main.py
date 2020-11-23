@@ -4,7 +4,6 @@
 from __future__ import print_function
 
 import gym
-from six.moves import cPickle as pickle
 import json
 import sys
 import os
